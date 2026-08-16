@@ -3,11 +3,11 @@
 This is a small wrapper for git repository stored on a remote server in an
 encrypted form.
 
-The basic idea is: all git repos are stored in a directory encrypted with
-[gocryptfs](https://github.com/rfjakob/gocryptfs), and majority of time, its
-plaintext version is not mounted anywhere. Whenever we need to run a git
-command involving remote server (such as `git fetch`, `git push` etc), we do it
-via wrapper, which does the following:
+The basic idea is: all git repos are stored on a remote server in a directory
+encrypted with [gocryptfs](https://github.com/rfjakob/gocryptfs), and majority
+of time, its plaintext version is not mounted anywhere. Whenever we need to run
+a git command involving remote server (such as `git fetch`, `git push` etc), we
+do it via wrapper, which does the following:
 
 - Collects the encryption passphrase (either from an environment variable, or
   if it's not available, request it from the user right in the terminal
@@ -124,24 +124,49 @@ Mounting /home/user/repos_encrypted -> /home/user/repos_plain
 passfile: reading from file "/dev/stdin"
 Decrypting master key
 Filesystem mounted and ready.
+The git root is unlocked; active holders: 1
 Running git command: git push
 ------------------------------------------
 Everything up-to-date
 ------------------------------------------
 Locking remote repos back...
 Unmounting /home/user/repos_plain
+The git root is locked.
 ```
 
 The verbatim `git` command output always goes between these
 `------------------------------------------` marks, the rest is the encryption
 bookkeeping logs printed by the wrapper.
 
-## Limitations
+## Concurrent clients
 
-Currently, only one client can safely use it at a time. Concurrent usage from
-multiple clients is not supported, and is not gracefully handled either. It
-shouldn't be too hard to address, but I just haven't bothered yet, since I only
-need it for single-user projects for now.
+Several clients can use repositories in the same encrypted directory at the
+same time. The server keeps a counter for each encrypted directory and only
+unmounts it when the last client finishes.
+
+If a client crashes, it cannot lower its counter. When a mount has been kept
+for more than 10 minutes and a client finishes, the server prints a loud
+warning. It leaves the mount alone, because a long push can be valid.
+
+If you are sure that nobody is using the repositories, force an unmount with:
+
+```bash
+bash scripts/remote_repo.sh force-lock
+```
+
+`force-lock` can interrupt another client, so use it only for recovery.
+
+## Tests
+
+Run the tests from the repository root:
+
+```bash
+make test
+```
+
+The first two tests check the server counter and concurrent server calls with
+fake mount commands. The last test creates a temporary gocryptfs mount and a
+tiny bare Git repository. It is skipped when FUSE is not available.
 
 ## License
 

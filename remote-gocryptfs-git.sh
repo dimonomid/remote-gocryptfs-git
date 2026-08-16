@@ -19,7 +19,7 @@ PLAINTEXT_GIT_ROOT="${PLAINTEXT_GIT_ROOT:-}"
 REMOTE_HELPER="remote-gocryptfs-git-server.sh"
 
 usage() {
-  >&2 echo "Usage: $0 <git|lock|unlock>"
+  >&2 echo "Usage: $0 <git|lock|unlock|force-lock>"
 }
 
 read_passphrase() {
@@ -66,15 +66,8 @@ lock_remote() {
   run_remote lock "$ENCRYPTED_GIT_ROOT" "$PLAINTEXT_GIT_ROOT"
 }
 
-acquire_client_mutex() {
-  # Do not let two local calls mount and unmount the remote directory at once.
-  local runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
-  umask 077
-  exec 9>"$runtime_dir/remote-gocryptfs-git.lock"
-  if ! flock -n 9; then
-    echo "Another remote-gocryptfs-git command is running; waiting for it to finish..."
-    flock 9
-  fi
+force_lock_remote() {
+  run_remote force-lock "$ENCRYPTED_GIT_ROOT" "$PLAINTEXT_GIT_ROOT"
 }
 
 cleanup_after_git() {
@@ -106,7 +99,7 @@ if [[ -z "$PLAINTEXT_GIT_ROOT" ]]; then
   exit 1
 fi
 
-if [[ "$command" != "lock" && "$command" != "unlock" && "$command" != "git" ]]; then
+if [[ "$command" != "lock" && "$command" != "unlock" && "$command" != "force-lock" && "$command" != "git" ]]; then
   >&2 echo "Unknown command '$command'"
   usage
   exit 1
@@ -114,16 +107,16 @@ fi
 
 case "$command" in
   lock)
-    acquire_client_mutex
     lock_remote
     ;;
   unlock)
-    acquire_client_mutex
     unlock_remote
+    ;;
+  force-lock)
+    force_lock_remote
     ;;
   git)
     shift
-    acquire_client_mutex
     echo "Unlocking remote repos..."
     unlock_remote
     trap cleanup_after_git EXIT
